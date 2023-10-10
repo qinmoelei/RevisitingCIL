@@ -7,31 +7,35 @@ from tqdm import tqdm
 from torch import optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
-from utils.inc_net import IncrementalNet,SimpleCosineIncrementalNet,MultiBranchCosineIncrementalNet,SimpleVitNet
+from utils.inc_net import IncrementalNet,SimpleCosineIncrementalNet,MultiBranchwithfcCosineIncrementalNet,SimpleVitNet_linear
 from models.base import BaseLearner
 from utils.toolkit import target2onehot, tensor2numpy
-
+from types import SimpleNamespace
+from convs.vision_transformer_adapter_LoRA import vit_base_patch16_224_in21k_adapter_lora
 # tune the model at first session with adapter, and then conduct simplecil.
 num_workers = 8
-
+# 这个concat出来两个结果，一个是simplevit出来的最正常的adapater，一个是目前调出来的linear+fc的结果
+# 现在调整一个adapater的参数 看效果如何
 class Learner(BaseLearner):
     def __init__(self, args):
         super().__init__(args)
-        if 'adapter' not in args["convnet_type"]:
-            raise NotImplementedError('Adapter requires Adapter backbone')
-
-        if 'resnet' in args['convnet_type']:
-            self._network = SimpleCosineIncrementalNet(args, True)
-            self. batch_size=128
-            self.init_lr=args["init_lr"] if args["init_lr"] is not None else  0.01
-        else:
-            self._network = SimpleVitNet(args, True)
-            self. batch_size= args["batch_size"]
-            self. init_lr=args["init_lr"]
-        
+        self. batch_size= args["batch_size"]
+        self. init_lr=args["init_lr"]
         self.weight_decay=args["weight_decay"] if args["weight_decay"] is not None else 0.0005
         self.min_lr=args['min_lr'] if args['min_lr'] is not None else 1e-8
         self.args=args
+        self.args_args=SimpleNamespace(**self.args)
+        _network = SimpleVitNet_linear(args, True)
+        _network.convnet=vit_base_patch16_224_in21k_adapter_lora(tuning_config=self.args_args)
+        _network.convnet.out_dim = 768
+        self._network_list=[]
+        self._network_list.append(_network)
+        
+        _network = SimpleVitNet_linear(args, True)
+        _network.convnet=vit_base_patch16_224_in21k_adapter_lora(tuning_config=self.args_args)
+        _network.convnet.out_dim = 768
+        
+        
 
     def after_task(self):
         self._known_classes = self._total_classes
@@ -117,7 +121,7 @@ class Learner(BaseLearner):
             
 
     def construct_dual_branch_network(self):
-        network = MultiBranchCosineIncrementalNet(self.args, True)
+        network = MultiBranchwithfcCosineIncrementalNet(self.args, True)
         network.construct_dual_branch_network(self._network)
         self._network=network.to(self._device)
 
@@ -128,6 +132,7 @@ class Learner(BaseLearner):
             losses = 0.0
             correct, total = 0, 0
             for i, (_, inputs, targets) in enumerate(train_loader):
+                self._network.train()
                 inputs, targets = inputs.to(self._device), targets.to(self._device)
                 logits = self._network(inputs)["logits"]
 
@@ -140,6 +145,7 @@ class Learner(BaseLearner):
                 _, preds = torch.max(logits, dim=1)
                 correct += preds.eq(targets.expand_as(preds)).cpu().sum()
                 total += len(targets)
+            
                 
 
             scheduler.step()

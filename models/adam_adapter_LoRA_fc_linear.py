@@ -7,31 +7,27 @@ from tqdm import tqdm
 from torch import optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
-from utils.inc_net import IncrementalNet,SimpleCosineIncrementalNet,MultiBranchCosineIncrementalNet,SimpleVitNet
+from utils.inc_net import IncrementalNet,SimpleCosineIncrementalNet,MultiBranchwithfcCosineIncrementalNet,SimpleVitNet_linear
 from models.base import BaseLearner
 from utils.toolkit import target2onehot, tensor2numpy
-
+from utils.loss import FocalLoss,LabelSmoothingLoss,kl_divergence_loss,huber_loss,hinge_loss
+from types import SimpleNamespace
+from convs.vision_transformer_adapter_LoRA import vit_base_patch16_224_in21k_adapter_lora
 # tune the model at first session with adapter, and then conduct simplecil.
 num_workers = 8
 
 class Learner(BaseLearner):
     def __init__(self, args):
         super().__init__(args)
-        if 'adapter' not in args["convnet_type"]:
-            raise NotImplementedError('Adapter requires Adapter backbone')
-
-        if 'resnet' in args['convnet_type']:
-            self._network = SimpleCosineIncrementalNet(args, True)
-            self. batch_size=128
-            self.init_lr=args["init_lr"] if args["init_lr"] is not None else  0.01
-        else:
-            self._network = SimpleVitNet(args, True)
-            self. batch_size= args["batch_size"]
-            self. init_lr=args["init_lr"]
-        
+        self._network = SimpleVitNet_linear(args, True)
+        self. batch_size= args["batch_size"]
+        self. init_lr=args["init_lr"]
         self.weight_decay=args["weight_decay"] if args["weight_decay"] is not None else 0.0005
         self.min_lr=args['min_lr'] if args['min_lr'] is not None else 1e-8
         self.args=args
+        self.args_args=SimpleNamespace(**self.args)
+        self._network.convnet=vit_base_patch16_224_in21k_adapter_lora(tuning_config=self.args_args)
+        self._network.convnet.out_dim = 768
 
     def after_task(self):
         self._known_classes = self._total_classes
@@ -117,21 +113,35 @@ class Learner(BaseLearner):
             
 
     def construct_dual_branch_network(self):
-        network = MultiBranchCosineIncrementalNet(self.args, True)
+        network = MultiBranchwithfcCosineIncrementalNet(self.args, True)
         network.construct_dual_branch_network(self._network)
         self._network=network.to(self._device)
 
     def _init_train(self, train_loader, test_loader, optimizer, scheduler):
+        gamma=self.args.get('gamma',2)
+        alpha=self.args.get('alpha',1)
+        smoothing=self.args.get('smoothing',0.1)
         prog_bar = tqdm(range(self.args['tuned_epoch']))
         for _, epoch in enumerate(prog_bar):
             self._network.train()
             losses = 0.0
             correct, total = 0, 0
             for i, (_, inputs, targets) in enumerate(train_loader):
+                self._network.train()
                 inputs, targets = inputs.to(self._device), targets.to(self._device)
                 logits = self._network(inputs)["logits"]
-
-                loss = F.cross_entropy(logits, targets)
+                if self.args.get("use_focal_loss",False):
+                    loss = FocalLoss(gamma=gamma,alpha=alpha)(logits, targets)
+                elif self.args.get("use_label_smoothing_loss",False):
+                    loss = LabelSmoothingLoss(smoothing=smoothing)(logits, targets)
+                elif self.args.get("use_KL_loss",False):
+                    loss = kl_divergence_loss(logits, targets)
+                elif self.args.get("use_huber_loss",False):
+                    loss = huber_loss(logits, targets)
+                elif self.args.get("use_hinge_loss",False):
+                    loss = hinge_loss(logits, targets)
+                else:
+                    loss = F.cross_entropy(logits, targets)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -140,6 +150,7 @@ class Learner(BaseLearner):
                 _, preds = torch.max(logits, dim=1)
                 correct += preds.eq(targets.expand_as(preds)).cpu().sum()
                 total += len(targets)
+            
                 
 
             scheduler.step()

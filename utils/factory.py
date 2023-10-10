@@ -15,5 +15,14 @@ def get_model(model_name, args):
     elif name=="adam_adapter":
         from models.adam_adapter import Learner
         return Learner(args)
+    elif name=="adam_adapter_lora":
+        from models.adam_adapter_LoRA import Learner
+        return Learner(args)
+    elif name=="adam_adapter_lora_fc":
+        from models.adam_adapter_LoRA_fc import Learner
+        return Learner(args)
+    elif name=="adam_adapter_lora_fc_linear":
+        from models.adam_adapter_LoRA_fc_linear import Learner
+        return Learner(args)
     else:
         assert 0
