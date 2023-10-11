@@ -208,7 +208,7 @@ class Learner(BaseLearner):
     def construct_dual_branch_network(self):
         network = FourBranchwithfcCosineIncrementalNet(self.args, True)
         network.construct_dual_branch_network(
-            self._network_list, ["SimpleVitNet_linear", "SimpleVitNet_linear", "SimpleVitNet_linear"]
+            self._network_list, ["SimpleVitNet_linear", "SimpleVitNet_linear", ]
         )
         self._network = network.to(self._device)
 
