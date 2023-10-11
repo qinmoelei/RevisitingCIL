@@ -19,7 +19,7 @@ from models.base import BaseLearner
 from utils.toolkit import target2onehot, tensor2numpy
 from types import SimpleNamespace
 from convs.vision_transformer_LoRA import (
-    vit_base_patch16_224_in21k_adapter_lora,
+    vit_base_patch16_224_in21k_lora,
 )
 from convs.vpt import build_promptmodel
 import timm
@@ -49,7 +49,7 @@ class Learner(BaseLearner):
         self.args = args
         self.args_args = SimpleNamespace(**self.args)
         _network_1 = SimpleVitNet_linear(args, True)
-        _network_1.convnet = vit_base_patch16_224_in21k_adapter_lora(
+        _network_1.convnet = vit_base_patch16_224_in21k_lora(
             tuning_config=self.args_args
         )
         _network_1.convnet.out_dim = 768
