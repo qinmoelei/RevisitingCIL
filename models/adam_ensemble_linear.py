@@ -18,7 +18,7 @@ from utils.inc_net import (
 from models.base import BaseLearner
 from utils.toolkit import target2onehot, tensor2numpy
 from types import SimpleNamespace
-from convs.vision_transformer_adapter_LoRA import (
+from convs.vision_transformer_LoRA import (
     vit_base_patch16_224_in21k_adapter_lora,
 )
 from convs.vpt import build_promptmodel

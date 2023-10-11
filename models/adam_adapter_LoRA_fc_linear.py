@@ -12,7 +12,7 @@ from models.base import BaseLearner
 from utils.toolkit import target2onehot, tensor2numpy
 from utils.loss import FocalLoss,LabelSmoothingLoss,kl_divergence_loss,huber_loss,hinge_loss
 from types import SimpleNamespace
-from convs.vision_transformer_adapter_LoRA import vit_base_patch16_224_in21k_adapter_lora
+from convs.vision_transformer_LoRA import vit_base_patch16_224_in21k_adapter_lora
 # tune the model at first session with adapter, and then conduct simplecil.
 num_workers = 8
 

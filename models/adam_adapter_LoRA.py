@@ -11,7 +11,7 @@ from utils.inc_net import IncrementalNet,SimpleCosineIncrementalNet,MultiBranchC
 from models.base import BaseLearner
 from utils.toolkit import target2onehot, tensor2numpy
 from types import SimpleNamespace
-from convs.vision_transformer_adapter_LoRA import vit_base_patch16_224_in21k_adapter_lora
+from convs.vision_transformer_LoRA import vit_base_patch16_224_in21k_adapter_lora
 # tune the model at first session with adapter, and then conduct simplecil.
 num_workers = 8
 
