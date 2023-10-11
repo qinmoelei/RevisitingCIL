@@ -24,5 +24,8 @@ def get_model(model_name, args):
     elif name=="adam_adapter_lora_fc_linear":
         from models.adam_adapter_LoRA_fc_linear import Learner
         return Learner(args)
+    elif name=="adam_emsemble":
+        from models.adam_ensemble import Learner
+        return Learner(args)
     else:
         assert 0

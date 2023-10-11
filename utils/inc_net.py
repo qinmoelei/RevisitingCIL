@@ -634,14 +634,6 @@ class SimpleVitNet(BaseNet):
             self.fc.weight.data[class_index] = proto
 
 
-
-
-
-
-
-
-
-
 class SimpleVitNet_linear(BaseNet):
     def __init__(self, args, pretrained):
         super().__init__(args, pretrained)
@@ -676,16 +668,6 @@ class SimpleVitNet_linear(BaseNet):
         out = self.fc(x)
         # out.update(x)
         return out
-
-
-
-
-
-
-
-
-
-
 
 
 class MultiBranchCosineIncrementalNet(BaseNet):
@@ -775,13 +757,6 @@ class MultiBranchCosineIncrementalNet(BaseNet):
         self.fc = self.generate_fc(self._feature_dim, self.args["init_cls"])
 
 
-
-
-
-
-
-
-
 class MultiBranchwithfcCosineIncrementalNet(BaseNet):
     def __init__(self, args, pretrained):
         super().__init__(args, pretrained)
@@ -835,7 +810,7 @@ class MultiBranchwithfcCosineIncrementalNet(BaseNet):
             out.update({"features": features})
             return out
         else:
-            features=[]
+            features = []
             for convnet in self.convnets:
                 output = convnet(x)
                 if isinstance(output, torch.Tensor):
@@ -871,35 +846,89 @@ class MultiBranchwithfcCosineIncrementalNet(BaseNet):
 
         self.convnets.append(tuned_model)  # adappted tuned model
 
-        self._feature_dim = self.convnets[0].out_dim +self.convnets[1].fc.out_features
+        self._feature_dim = self.convnets[0].out_dim + self.convnets[1].fc.out_features
         self.fc = self.generate_fc(self._feature_dim, self.args["init_cls"])
 
 
+class FourBranchwithfcCosineIncrementalNet(BaseNet):
+    def __init__(self, args, pretrained):
+        super().__init__(args, pretrained)
 
+        # no need the convnet.
 
+        print(
+            "Clear the convnet in MultiBranchCosineIncrementalNet, since we are using self.convnets with dual branches"
+        )
+        self.convnet = torch.nn.Identity()
+        for param in self.convnet.parameters():
+            param.requires_grad = False
 
+        self.convnets = nn.ModuleList()
+        self.args = args
 
+        if "resnet" in args["convnet_type"]:
+            self.modeltype = "cnn"
+        else:
+            self.modeltype = "vit"
 
+    def update_fc(self, nb_classes, nextperiod_initialization=None):
+        fc = self.generate_fc(self._feature_dim, nb_classes).cuda()
+        if self.fc is not None:
+            nb_output = self.fc.out_features
+            weight = copy.deepcopy(self.fc.weight.data)
+            fc.sigma.data = self.fc.sigma.data
+            if nextperiod_initialization is not None:
+                weight = torch.cat([weight, nextperiod_initialization])
+            else:
+                weight = torch.cat(
+                    [
+                        weight,
+                        torch.zeros(nb_classes - nb_output, self._feature_dim).cuda(),
+                    ]
+                )
+            fc.weight = nn.Parameter(weight)
+        del self.fc
+        self.fc = fc
 
+    def generate_fc(self, in_dim, out_dim):
+        fc = CosineLinear(in_dim, out_dim)
+        return fc
 
+    def forward(self, x):
+        if self.modeltype == "cnn":
+            features = [convnet(x)["features"] for convnet in self.convnets]
+            features = torch.cat(features, 1)
+            # import pdb; pdb.set_trace()
+            out = self.fc(features)
+            out.update({"features": features})
+            return out
+        else:
+            features = []
+            for convnet in self.convnets:
+                output = convnet(x)
+                if isinstance(output, torch.Tensor):
+                    features.append(output)
+                else:
+                    features.append(output["logits"])
+            features = torch.cat(features, 1)
+            # import pdb; pdb.set_trace()
+            out = self.fc(features)
+            out.update({"features": features})
+            return out
 
+    def construct_dual_branch_network(self, tuned_model_list, tuned_model_name_list):
+        self.convnets.append(get_convnet(self.args))  # the pretrained model itself
+        for model, name in zip(tuned_model_list, tuned_model_name_list):
+            if name == "SimpleVitNet_linear":
+                self.convnets.append(model)  # adappted tuned model
+            else:
+                self.convnets.append(model.convnet)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        self._feature_dim = (
+            self.convnets[0].out_dim * len(tuned_model_list) 
+            + self.convnets[1].fc.out_features
+        )
+        self.fc = self.generate_fc(self._feature_dim, self.args["init_cls"])
 
 
 class FOSTERNet(nn.Module):
