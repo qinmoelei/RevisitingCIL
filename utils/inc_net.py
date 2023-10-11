@@ -924,9 +924,11 @@ class FourBranchwithfcCosineIncrementalNet(BaseNet):
             else:
                 self.convnets.append(model.convnet)
 
+        count = tuned_model_name_list.count("SimpleVitNet_linear")
+
         self._feature_dim = (
-            self.convnets[0].out_dim * len(tuned_model_list) 
-            + self.convnets[1].fc.out_features
+            self.convnets[0].out_dim * (1 + len(tuned_model_list) - count)
+            + self.convnets[1].fc.out_features * count
         )
         self.fc = self.generate_fc(self._feature_dim, self.args["init_cls"])
 
